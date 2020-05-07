@@ -1,0 +1,6 @@
+*.DS_Store
+content/
+images/
+output/
+styles/
+venv/
