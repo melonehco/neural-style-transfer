@@ -12,21 +12,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 imsize = 512 if torch.cuda.is_available() else 128
 
 loader = transforms.Compose([transforms.Resize(imsize), transforms.ToTensor()])
+unloader = transforms.ToPILImage()
 
 
 def image_loader(image_name):
     image = Image.open(image_name)
     image = loader(image).unsqueeze(0)  # unsqueeze adds a dimension
     return image.to(device, torch.float)  # move tensor to device
-
-
-style_img = image_loader("images/style1.jpg")
-content_img = image_loader("images/content1.JPG")
-
-assert style_img.size() == content_img.size(), "input images must have same dimensions"
-
-unloader = transforms.ToPILImage()
-plt.ion()  # interactive mode on
 
 
 def imshow(tensor, title=None):
@@ -37,12 +29,6 @@ def imshow(tensor, title=None):
     if title is not None:
         plt.title(title)
     plt.pause(0.001)
-
-
-plt.figure()
-imshow(style_img, title="Style Image")
-plt.figure()
-imshow(content_img, title="Content Image")
 
 
 class ContentLoss(nn.Module):
@@ -76,11 +62,6 @@ class StyleLoss(nn.Module):
         return input
 
 
-cnn = models.vgg19(pretrained=True).features.to(device).eval()
-cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)  # TODO: no idea where these numbers come from
-cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
-
-
 class Normalization(nn.Module):
     def __init__(self, mean, std):
         super(Normalization, self).__init__()
@@ -91,20 +72,21 @@ class Normalization(nn.Module):
         return (img - self.mean) / self.std
 
 
-content_layers_default = ['conv_4']
-style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
-
-
 def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
                                style_img, content_img,
-                               content_layers=content_layers_default,
-                               style_layers=style_layers_default):
+                               content_layers=None,
+                               style_layers=None):
     cnn = copy.deepcopy(cnn)
 
     normalization = Normalization(normalization_mean, normalization_std).to(device)
 
     content_losses = []
     style_losses = []
+
+    if content_layers is None:
+        content_layers = ['conv_4']
+    if style_layers is None:
+        style_layers = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
 
     model = nn.Sequential(normalization)
 
@@ -147,14 +129,8 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
     return model, style_losses, content_losses
 
 
-input_image = content_img.clone()
-input_image.requires_grad = True
-plt.figure()
-imshow(input_image, 'input image')
-
-
 def get_input_optimizer(input_img):
-    optimizer = optim.LBFGS([input_image])
+    optimizer = optim.LBFGS([input_img])
     return optimizer
 
 
@@ -202,11 +178,3 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
 
     return input_img
 
-
-output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                            content_img, style_img, input_image)
-
-plt.figure()
-imshow(output, title='output image')
-plt.ioff()  # interactive mode off
-plt.show()
